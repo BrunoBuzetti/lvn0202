@@ -25,6 +25,7 @@ class ImportTransactionsService {
     const contactReadStream = fs.createReadStream(filePath);
 
     const parsers = csvParse({
+      /* delimiter: ';', */
       from_line: 2,
     });
 
@@ -46,17 +47,53 @@ class ImportTransactionsService {
 
     await new Promise(resolve => parseCSV.on('end', resolve));
 
-    /* const existentCategories = await categoriesRepository.find({
+    const existentCategories = await categoriesRepository.find({
       where: {
         title: In(categories),
       },
-    }); */
+    });
 
-    /* console.log(existentCategories); */
+    const existentCategoriesTitle = existentCategories.map(
+      (category: Category) => category.title,
+    );
+
+    const addCategory = categories
+      .filter(category => !existentCategoriesTitle.includes(category))
+      .filter((value, index, self) => self.indexOf(value) === index);
+
+    const newCategories = categoriesRepository.create(
+      addCategory.map(title => ({
+        title,
+      })),
+    );
+
+    await categoriesRepository.save(newCategories);
+
+    const finalCategories = [...newCategories, ...existentCategories];
+
+    const createdTransctions = transactionsRepository.create(
+      transactions.map(transaction => ({
+        title: transaction.title,
+        type: transaction.type,
+        value: transaction.value,
+        category: finalCategories.find(
+          category => category.title === transaction.category,
+        ),
+      })),
+    );
+
+    await transactionsRepository.save(createdTransctions);
+
+    await fs.promises.unlink(filePath);
+
+    console.log(existentCategories);
+    console.log(existentCategoriesTitle);
+    console.log(addCategory);
+    console.log(finalCategories);
     console.log(categories);
     console.log(transactions);
 
-    return { transactions };
+    return createdTransctions;
   }
 }
 
